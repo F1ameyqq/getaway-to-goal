@@ -115,25 +115,22 @@ crx3 → 迷你安装器 → 7z 载荷 → Chrome-bin/<版本>/
 ### 5. 出坐标
 
 ```powershell
-# 出栏图，看每行属于哪题（输出到 srcDir，文件名带页号）
-python cols.py <图> 4.5 L 44 258
-python cols.py <图> 4.5 R 262 497
+# 一行一张图：题目页左右栏并排 + 行号；答案页单栏 + 行号/块号 + 坐标表
+python guide.py <pNN_hi.jpg> <pNN_guide.png> q --cols L:44-258,R:262-497
+python guide.py <aNNN_hi.jpg> <aNNN_guide.png> a --x 8-218 --y 460-550
 
-# 写 spec 后生成坐标
-python measure_page.py specs\p33_qspec.json out_q.json
-python measure_page.py specs\p33_aspec.json out_a.json
-
-# 合成录入用的页文件
-python make_page.py out_q.json out_a.json 33 175 specs\p33_types.json pages\p33.json
+# 写 spec 后，一条命令跑完 自检 → measure → make → overlay
+python prepare_page.py specs\p33_qspec.json specs\p33_aspec.json 33 175 specs\p33_types.json pages\p33.json
 ```
+
+`prepare_page.py` 会打印 `IMG_OK`、`PAGE`、`CHECK_*`，以及两张 overlay 的路径。
+`guide.py` 的 `--y` 必须和 spec 里的 `y` 一致（题目页默认 `20-660`），否则行号对不上。
+旧的 `cols.py` / `measure_page.py` / `make_page.py` 手动三步仍然可用，只是多几次往返。
 
 ### 6. 复核（**不许跳过**）
 
-```powershell
-python overlay.py <图> out_q.json preview.png q
-```
-
-打开 `preview.png`，**逐题说出框里是什么内容**。说不出来就是没看，就是错的。
+打开 `prepare_page.py` 打印的 `VIEW_Q` / `VIEW_A` 两张图，**逐题说出框里是什么内容**。说不出来就是没看，就是错的。
+蓝框=选项，红框=题目，绿框=答案；答案图会自动裁掉无关区域。
 
 `measure_page.py` 会顺带做几何自检（空框、退化框、跨题重叠），结果一路带进 `pages/*.json` 的 `_check` 字段。
 
@@ -190,7 +187,9 @@ dry run 只验证**结构**：几题、几个框、什么类型、页号。它**
 | `config.mjs` / `config.json` | 平台常量与路径 |
 | `run_ego.ps1` | 启动入口：非管理员直接跑，管理员自动降权 |
 | `shotPages.mjs` / `shotAns.mjs` | 抓题目区 / 答案区截图 |
-| `cols.py` | 出带行号的栏图，用于判断每行属于哪题 |
+| `guide.py` | 一页一张标尺图（题目页双栏并排、答案页单栏带块号），替代 `cols.py` |
+| `prepare_page.py` | **离线主入口**：自检 → measure → make → overlay 一条命令 |
+| `cols.py` | 旧版栏图（`guide.py` 的备用） |
 | `ans_dump.py` | 打印答案区每行的坐标范围，用于手写 `@` 矩形 |
 | `probe_cols.py` | 找双栏页的中缝 |
 | `measure_page.py` | **主入口**：spec + 图 → 坐标，自带几何自检 |

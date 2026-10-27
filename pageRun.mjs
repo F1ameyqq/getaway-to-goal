@@ -73,14 +73,16 @@ export async function main(coordFile, opts = {}) {
   for (const it of todo) {
     const ts = Date.now();
     try {
+      const r0 = Date.now();
       const ctx = await restore({ qPage, aPage });
+      const restoreMs = Date.now() - r0;
       const out = await run({
         n: it.n, expectCur: ctx.cur, order: ctx.cur,
         q: it.q, w: it.w, a: it.a, type: it.type, quiet: true,
       });
       const ms = Date.now() - ts;
-      done.push({ n: it.n, order: out.order, ms });
-      console.log(`n=${it.n}\torder=${out.order}\tOK\t${ms}ms`);
+      done.push({ n: it.n, order: out.order, ms, restoreMs });
+      console.log(`n=${it.n}\torder=${out.order}\tOK\t${ms}ms\trestore=${restoreMs}ms`);
     } catch (e) {
       const ms = Date.now() - ts;
       failed.push({ n: it.n, err: e.message, ms });

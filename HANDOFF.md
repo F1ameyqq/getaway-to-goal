@@ -21,18 +21,17 @@
 
 | # | 步骤 | 通过标准 |
 |---|---|---|
-| 1 | 抓图 `shotPages.mjs` | 图能打开、尺寸对、不是空白 |
-| 2 | 出栏图 `cols.py` | **亲眼看**每行属于哪题 |
+| 1 | 抓图 `shotPages.mjs` / `shotAns.mjs` | 下一步会打印 `IMG_OK`（尺寸 + 墨迹占比）。**不用再单独打开原图看尺寸/空白** |
+| 2 | `guide.py` 出标尺图（题目页一张、答案页一张） | **亲眼看**每行属于哪题；图上的 `L03`/`A07` 与 spec 行号完全一致 |
 | 3 | 写 spec `pNN_qspec.json` | 每个 n 都对应到具体行 |
-| 4 | `measure_page.py` | 打印出 items 数、无 CHECK 警告 |
-| 5 | **`overlay.py` 出图并看图** | **逐题复述框内是什么内容**（见下） |
-| 6 | `make_page.py` 合成 | 题数、类型对 |
-| 7 | `pageRun.mjs --dry`（用 node，不开浏览器） | `CHECK_CLEAN` 且全绿 |
+| 4 | **`prepare_page.py` 一条命令** | `IMG_OK` + `PAGE` + `CHECK_CLEAN`，并打印两张 overlay 路径 |
+| 5 | **看这两张 overlay 图** | **逐题复述框内是什么内容**（见下） |
+| 6 | `pageRun.mjs --dry`（用 node，不开浏览器） | `CHECK_CLEAN` 且全绿 |
+| 7 | **停手，报告** | 提交要**单独授权** |
 
-第 4 步会做几何自检，只覆盖：退化框、空框、同题选项框互吞、**跨题重叠**。跨题重叠最有用——框整体偏了一行，几乎必然和隔壁题的框撞上。
+第 4 步内部依次做 measure → make → overlay，并做几何自检：退化框、空框、同题选项框互吞、**跨题重叠**。跨题重叠最有用——框整体偏了一行，几乎必然和隔壁题的框撞上。
 
-自检结果会一路带进 `pages/pNN.json` 的 `_check` 字段，dry run 时打出来。**看到 `CHECK_WARN` 就别往下走。**
-| 8 | **停手，报告** | 提交要**单独授权** |
+自检结果会一路带进 `pages/pNN.json` 的 `_check` 字段，dry run 时也会打出来。**看到 `CHECK_WARN` 就别往下走。**
 
 第 5 步是唯一能发现位置错误的一步。做的时候**逐题说出框内文字**，不是「看起来还行」。说不出来 = 没看。
 
@@ -103,7 +102,18 @@
 node -e "import('file:///<本目录绝对路径，正斜杠>/pageRun.mjs').then(async m=>{console.log(JSON.stringify(await m.main('<本目录绝对路径>/pages/pNN.json',{dry:true})))})"
 ```
 
+`prepare_page.py` 跑完会直接把这条命令打印出来，照抄即可。`main()` 收的是**文件路径**，不要传 `file://` URL。
+
 省掉一次开浏览器，也就省掉一次 hard stop / 证书弹窗的机会。
+
+### 想知道每题时间花在哪
+
+```powershell
+$env:RESTORE_TIMING="1"
+.\run_ego.ps1 -Js .\check_env.mjs -Out "$env:TEMP\check.txt" -TimeoutSec 240
+```
+
+会多打一行 `RESTORE_TIMING {"nav":…,"reload":…,"book_open":…,…}`（单位 ms），`pageRun` 的每题行也会带 `restore=…ms`。不设这个环境变量时输出维持原样。
 
 ### 平台常量都来自 config.json
 
@@ -136,11 +146,13 @@ node -e "import('file:///<本目录绝对路径，正斜杠>/pageRun.mjs').then(
 | `ego.cmd` | 计划任务包装，写死引用 `_run.mjs` |
 | `shotPages.mjs` | 批量抓题目区图，改文件顶部的 `QPAGES` |
 | `shotAns.mjs` | 抓答案区图，改 `QPAGE` / `APAGES` |
-| `cols.py` | 出带行号的栏图，给人看，判断每行属于哪题 |
-| `ans_dump.py` | 打印答案区每行 y 范围 + 行内块 x 范围（给 `@` 矩形定位用） |
-| `measure_page.py` | spec + 截图 → 坐标 JSON（主入口，自带 CHECK 自检） |
+| `guide.py` | **一行一张图**：题目页左右栏并排 + 行号；答案页单栏 + 行号/块号 + 坐标表。替代 `cols.py` 的四张栏图 |
+| `prepare_page.py` | **主入口**：图像自检 → measure → make → overlay 一条命令跑完 |
+| `measure_page.py` | spec + 截图 → 坐标 JSON（自带 CHECK 自检） |
 | `make_page.py` | 题目坐标 + 答案坐标 → `pages/pNN.json` |
-| `overlay.py` | 把框画在图上（**第二节第 5 步，必做**） |
+| `overlay.py` | 把框画在图上（**第二节第 5 步，必做**）。答案图自动裁掉无关区域 |
+| `cols.py` | 旧版栏图（已由 `guide.py` 取代，只在 guide 出问题时效备用） |
+| `ans_dump.py` | 打印答案区每行 y 范围 + 块 x 范围（`guide.py a` 已包含同样的表） |
 | `pageRun.mjs` | 逐题 restore + run + 服务端回读 |
 | `probe_cols.py` | 找双栏页的中缝 |
 
@@ -148,13 +160,26 @@ node -e "import('file:///<本目录绝对路径，正斜杠>/pageRun.mjs').then(
 
 ## 十、工作流
 
-1. 抓图：`shotPages.mjs` → `srcpages/pNN_hi.jpg`
-2. 出图：`python -I cols.py <图> 4.5 L 44 258`（左栏）/ `R 262 497`（右栏）
-3. 写 spec（每页一个 `pNN_qspec.json`）
-4. `python -I measure_page.py <spec> <out.json>`
-5. `python -I overlay.py <图> <out.json> <预览.png> q` → **看图**
-6. `python -I make_page.py <q.json> <a.json> <qPage> <aPage> <types.json> pages/pNN.json`
-7. dry run → 停手报告
+```powershell
+# 1. 抓图（需要 ego）
+.\run_ego.ps1 -Js .\shotPages.mjs -Out "$env:TEMP\shots.txt"
+
+# 2. 出标尺图：题目页一张（左右栏并排）、答案页一张
+python -I guide.py <pNN_hi.jpg> <pNN_guide.png> q --cols L:44-258,R:262-497
+python -I guide.py <aNNN_hi.jpg> <aNNN_guide.png> a --x 8-218 --y 460-550
+#    答案页不确定 y 区间时，先出整页坐标尺：
+python -I guide.py <aNNN_hi.jpg> <aNNN_full.png> a --full
+
+# 3. 写 spec（每页一个 pNN_qspec.json / pNN_aspec.json）
+
+# 4. 一条命令：自检 → 出坐标 → 合成 → overlay
+python -I prepare_page.py specs\pNN_qspec.json specs\pNN_aspec.json <qPage> <aPage> specs\pNN_types.json pages\pNN.json
+#    终端会打印 VIEW_Q / VIEW_A 两个路径 —— 打开，逐题说出框里是什么
+
+# 5. dry run（照 prepare_page 打印的 NEXT 命令抄）→ 停手报告
+```
+
+注意：`guide.py` 的 `--y` 必须和 spec 里的 `y` 一致，否则 `A07` 不是 spec 里的 `A07`。题目页默认 `20-660`。
 
 ## 十一、spec 格式
 
