@@ -1,6 +1,9 @@
 # 本机配置，含账号相关的书号/目录名，不入库
 config.json
 
+# 会话内部交接，不是交付物
+SESSION_HANDOFF.md
+
 # 生成物
 ego.cmd
 _run.mjs
