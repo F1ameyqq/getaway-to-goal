@@ -20,13 +20,16 @@
 | **离线** | 图 → 坐标 JSON → 自检 → dry run | Python + Pillow + numpy + Node | ✅ **能** |
 | **在线** | 坐标 → 真在平台上画框提交 | ego lite + 平台登录态 | ❌ 见下面三步 |
 
-在线阶段克隆后必须人工做三件事（agent 做不了）：
+在线阶段克隆后要做的三件事：
 
-1. **装 ego lite**（浏览器运行时，不在本仓库里）
-2. **登录标注平台**（token 存在浏览器 localStorage，不能随仓库分发）
-3. **首次打开时过平台证书页**（平台证书过期，需要人点「继续前往」）
+1. **装 ego lite** —— ✅ **agent 能做**：`.\install\install_ego.ps1 -Crx <安装包路径>`
+   （不给安装包也行，官方安装器可以装，只是部分机器会卡住）
+2. **登录标注平台** —— ❌ 只有人能做（token 存在浏览器 localStorage，不能随仓库分发）
+3. **首次打开时过平台证书页** —— ❌ 只有人能做（平台证书过期，需要人点「继续前往」）
 
-这三步只做一次。做完之后，agent 就能跑完整流程。
+第 1 步见下面「安装 ego lite」。做完之后 agent 就能跑完整流程。
+
+> **接手这个仓库的 agent，先读 [`AGENT_PROMPT.md`](AGENT_PROMPT.md)。** 那是按顺序排好的任务说明。
 
 ---
 
@@ -57,6 +60,28 @@ Copy-Item config.example.json config.json
 
 `config.json` 不入库。
 
+### 2. 安装 ego lite（只有在线提交需要）
+
+```powershell
+.\install\install_ego.ps1 -Crx "D:\下载\ego-0.6.1.13-x64.crx3"
+```
+
+**不要跑官方的 `egoliteSetup.exe`** —— 部分机器上它会卡住不返回。这个脚本绕开它，直接把安装包里的文件树铺到标准位置：
+
+```
+crx3 → 迷你安装器 → 7z 载荷 → Chrome-bin/<版本>/
+     → %LOCALAPPDATA%\Citro Labs\ego lite\Application\<版本>\
+     → junction ~/.local/share/ego/active_version_dir
+     → junction ~/.local/share/ego/ego-skills
+     → 用户 PATH
+```
+
+已在本机验证：解包产物与官方安装目录**逐文件一致**（只少一个安装器自留的 `Installer\setup.exe`），
+解出的 `ego-browser.exe` 可独立运行（`0.6.1.13 / chromium 156.0.8078.48 / node v24.22.1`）。
+完整装一遍约 9 秒。
+
+装完需要**新开一个终端**，PATH 才生效。
+
 ### 3. 环境自检（在线提交之前必做一次）
 
 ```powershell
@@ -77,7 +102,7 @@ Copy-Item config.example.json config.json
 
 图片落到 `paths.srcDir`。
 
-### 4. 出坐标
+### 5. 出坐标
 
 ```powershell
 # 出栏图，看每行属于哪题（输出到 srcDir，文件名带页号）
@@ -92,7 +117,7 @@ python measure_page.py specs\p33_aspec.json out_a.json
 python make_page.py out_q.json out_a.json 33 175 specs\p33_types.json pages\p33.json
 ```
 
-### 5. 复核（**不许跳过**）
+### 6. 复核（**不许跳过**）
 
 ```powershell
 python overlay.py <图> out_q.json preview.png q
@@ -102,7 +127,7 @@ python overlay.py <图> out_q.json preview.png q
 
 `measure_page.py` 会顺带做几何自检（空框、退化框、跨题重叠），结果一路带进 `pages/*.json` 的 `_check` 字段。
 
-### 6. dry run（不需要 ego）
+### 7. dry run（不需要 ego）
 
 ```powershell
 node -e "import('file:///<本目录>/pageRun.mjs').then(async m=>{console.log(JSON.stringify(await m.main('<本目录>/pages/p33.json',{dry:true})))})"
@@ -110,7 +135,7 @@ node -e "import('file:///<本目录>/pageRun.mjs').then(async m=>{console.log(JS
 
 必须看到 `CHECK_CLEAN` 且逐题数量对。
 
-### 7. 提交（不可逆）
+### 8. 提交（不可逆）
 
 ```powershell
 .\run_ego.ps1 -Js .\p33run.mjs -Out "$env:TEMP\run.txt" -TimeoutSec 560
@@ -148,7 +173,10 @@ dry run 只验证**结构**：几题、几个框、什么类型、页号。它**
 
 | 文件 | 作用 |
 |---|---|
+| `AGENT_PROMPT.md` | **按顺序排好的任务说明**：装 ego → 拉仓库 → 配置 → 等人登录 → 自检 |
 | `HANDOFF.md` | **给接手的 agent 的完整规程**，含检查点、必须停下的情形、踩过的坑。先读它 |
+| `install/install_ego.ps1` | 离线安装 ego lite（绕开官方安装器） |
+| `install/extract_crx.py` | crx3 → 7z 载荷，被上面那个脚本调用 |
 | `config.mjs` / `config.json` | 平台常量与路径 |
 | `run_ego.ps1` | 启动入口：非管理员直接跑，管理员自动降权 |
 | `shotPages.mjs` / `shotAns.mjs` | 抓题目区 / 答案区截图 |
