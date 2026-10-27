@@ -10,15 +10,61 @@
 # （仅少一个安装器自己的 Installer\setup.exe），且解出的 ego-browser.exe 可直接运行。
 #
 # 用法:
+#   .\install_ego.ps1                      # 自动在下载/桌面/临时目录/C:\ego-pkg 里找 ego*.crx3
 #   .\install_ego.ps1 -Crx D:\ego-0.6.1.13-x64.crx3
-#   .\install_ego.ps1 -Crx D:\ego-0.6.1.13-x64.crx3 -Force   # 已装也重装
+#   .\install_ego.ps1 -Crx ... -Force       # 已装也重装
 param(
-  [Parameter(Mandatory=$true)][string]$Crx,
+  [string]$Crx = "",
   [switch]$Force
 )
 $ErrorActionPreference = 'Stop'
 
+function Find-CrxPackage {
+  # 客户通常是「浏览器下载 → 双击/直接放着」，所以先去那些地方找，而不是要求他报路径。
+  $dirs = @(
+    (Join-Path $env:USERPROFILE 'Downloads'),
+    (Join-Path $env:USERPROFILE 'Desktop'),
+    (Join-Path $env:USERPROFILE 'OneDrive\Desktop'),
+    $env:TEMP,
+    'C:\ego-pkg'
+  )
+  $hits = @()
+  foreach ($d in $dirs) {
+    if ($d -and (Test-Path $d)) {
+      $hits += @(Get-ChildItem $d -Filter 'ego*.crx3' -File -ErrorAction SilentlyContinue)
+    }
+  }
+  return $hits
+}
+
 # ---------- 0. 前置检查 ----------
+if (-not $Crx) {
+  $hits = @(Find-CrxPackage)
+  if ($hits.Count -eq 1) {
+    $Crx = $hits[0].FullName
+    Write-Host "自动找到安装包: $Crx" -ForegroundColor Cyan
+  } elseif ($hits.Count -gt 1) {
+    Write-Host "找到多个 crx3，请用 -Crx 指定其中一个：" -ForegroundColor Yellow
+    $hits | ForEach-Object { Write-Host ("  " + $_.FullName) }
+    throw "安装包不唯一"
+  } else {
+    throw @"
+没找到 ego 的 crx3 安装包。
+
+找过这些位置：
+  $env:USERPROFILE\Downloads
+  $env:USERPROFILE\Desktop
+  $env:TEMP
+  C:\ego-pkg
+
+两种解决办法（选一种）：
+  1. 下载到一个固定位置，然后自动重跑：
+       curl.exe -L -o "C:\ego-pkg\ego-0.6.1.13-x64.crx3" "<下载链接>"
+  2. 直接告诉脚本文件在哪：
+       .\install\install_ego.ps1 -Crx "D:\你放的地方\ego-0.6.1.13-x64.crx3"
+"@
+  }
+}
 if (-not (Test-Path $Crx)) { throw "找不到安装包: $Crx" }
 if (-not (Get-Command python -ErrorAction SilentlyContinue)) { throw "需要 python（离线阶段本来就要用）" }
 if (-not (Get-Command tar -ErrorAction SilentlyContinue)) { throw "需要 Windows 自带的 tar.exe（Win10 1803+ 都有）" }

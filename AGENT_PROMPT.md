@@ -18,7 +18,7 @@
 如果下面任何一项缺失，**先问，不要猜**：
 
 - DSH 已安装并运行
-- ego lite 安装包 `ego-0.6.1.13-x64.crx3`（约 286 MB），**路径由客户提供**
+- ego lite 安装包的**下载链接**，或客户已经下载好的文件（约 286 MB）
 - 客户在标注平台上有账号
 - 客户知道要录哪本书（`fileId`）和哪个目录节点（`dirNode`）
 
@@ -42,9 +42,38 @@ git --version
 
 官方 `egoliteSetup.exe` 在部分机器上会卡住不返回，所以仓库自带离线解包安装脚本。
 
+### 2.1 把安装包取到本机
+
+**首选：自己下载**（不要问客户"安装包在哪"，问他**链接**）
+
 ```powershell
-# 用客户给的实际路径
-.\install\install_ego.ps1 -Crx "D:\下载\ego-0.6.1.13-x64.crx3"
+New-Item -ItemType Directory -Force C:\ego-pkg | Out-Null
+curl.exe -L -o "C:\ego-pkg\ego-0.6.1.13-x64.crx3" "<客户给的下载链接>"
+```
+
+用 `curl.exe` 而不是 `curl` —— PowerShell 里 `curl` 是 `Invoke-WebRequest` 的别名，参数不通用。
+
+下完核对大小，应该是 **286,365,034 字节**：
+
+```powershell
+(Get-Item C:\ego-pkg\*.crx3).Length
+```
+
+对不上就是文件被截断或链接给错了，**别硬装**，重新下。
+
+> 如果客户说"文件我已经下好了"，**不要问路径** —— 直接进 2.2，脚本会自己去
+> `Downloads` / `Desktop` / `%TEMP%` / `C:\ego-pkg` 里找。
+
+### 2.2 安装
+
+```powershell
+.\install\install_ego.ps1
+```
+
+或者明确指定文件：
+
+```powershell
+.\install\install_ego.ps1 -Crx "C:\ego-pkg\ego-0.6.1.13-x64.crx3"
 ```
 
 正常输出结尾是：

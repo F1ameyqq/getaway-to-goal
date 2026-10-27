@@ -63,7 +63,17 @@ Copy-Item config.example.json config.json
 ### 2. 安装 ego lite（只有在线提交需要）
 
 ```powershell
+# 脚本自己去 Downloads / Desktop / %TEMP% / C:\ego-pkg 里找 ego*.crx3
+.\install\install_ego.ps1
+
+# 或者明确指定
 .\install\install_ego.ps1 -Crx "D:\下载\ego-0.6.1.13-x64.crx3"
+```
+
+推荐先下到固定位置，路径就永远不用问了：
+
+```powershell
+curl.exe -L -o "C:\ego-pkg\ego-0.6.1.13-x64.crx3" "<下载链接>"
 ```
 
 **不要跑官方的 `egoliteSetup.exe`** —— 部分机器上它会卡住不返回。这个脚本绕开它，直接把安装包里的文件树铺到标准位置：
