@@ -26,14 +26,17 @@ if (-not $ego -or -not (Test-Path $ego)) {
 }
 
 # 生成 ego.cmd。schtasks 的 /TR 里不能出现 / 开头的参数（会被吃掉），所以必须包一层。
+# 注意：ego 的 `-e` 会把相对 import 解析到它自己的安装目录，所以必须用绝对 file:/// 路径。
 # 这个文件是生成物，不入库。
 $cmdPath = Join-Path $dir 'ego.cmd'
+$imp = 'file:///' + ($dir -replace '\\', '/') + '/_run.mjs'
+$q = "'"
 $lines = @(
   '@echo off',
   'setlocal',
   'set OUT=%~1',
   ('cd /d "' + $dir + '"'),
-  ('"' + $ego + '" nodejs -e "await import(''./_run.mjs'')" > "%OUT%" 2>&1'),
+  ('"' + $ego + '" nodejs -e "await import(' + $q + $imp + $q + ')" > "%OUT%" 2>&1'),
   '>>"%OUT%" echo EXIT=%ERRORLEVEL%',
   'endlocal'
 )

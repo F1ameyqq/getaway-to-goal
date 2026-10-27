@@ -57,7 +57,17 @@ Copy-Item config.example.json config.json
 
 `config.json` 不入库。
 
-### 2. 抓图（需要 ego）
+### 3. 环境自检（在线提交之前必做一次）
+
+```powershell
+.\run_ego.ps1 -Js .\check_env.mjs -Out "$env:TEMP\check.txt" -TimeoutSec 240
+```
+
+它会依次验证：ego 能连上 → 登录态有效 → 能选到书 → 能选到目录 → 能翻页 → 当前页无残留框。
+
+看到 `CHECK_ENV_OK` 就说明在线阶段的三个前提（ego、登录、证书）都过了。失败时它会直接告诉你该改哪一项。
+
+### 4. 抓图（需要 ego）
 
 改 `shotPages.mjs` 顶部的 `QPAGES`，然后：
 
@@ -67,7 +77,7 @@ Copy-Item config.example.json config.json
 
 图片落到 `paths.srcDir`。
 
-### 3. 出坐标
+### 4. 出坐标
 
 ```powershell
 # 出栏图，看每行属于哪题（输出到 srcDir，文件名带页号）
@@ -82,7 +92,7 @@ python measure_page.py specs\p33_aspec.json out_a.json
 python make_page.py out_q.json out_a.json 33 175 specs\p33_types.json pages\p33.json
 ```
 
-### 4. 复核（**不许跳过**）
+### 5. 复核（**不许跳过**）
 
 ```powershell
 python overlay.py <图> out_q.json preview.png q
@@ -92,7 +102,7 @@ python overlay.py <图> out_q.json preview.png q
 
 `measure_page.py` 会顺带做几何自检（空框、退化框、跨题重叠），结果一路带进 `pages/*.json` 的 `_check` 字段。
 
-### 5. dry run（不需要 ego）
+### 6. dry run（不需要 ego）
 
 ```powershell
 node -e "import('file:///<本目录>/pageRun.mjs').then(async m=>{console.log(JSON.stringify(await m.main('<本目录>/pages/p33.json',{dry:true})))})"
@@ -100,7 +110,7 @@ node -e "import('file:///<本目录>/pageRun.mjs').then(async m=>{console.log(JS
 
 必须看到 `CHECK_CLEAN` 且逐题数量对。
 
-### 6. 提交（不可逆）
+### 7. 提交（不可逆）
 
 ```powershell
 .\run_ego.ps1 -Js .\p33run.mjs -Out "$env:TEMP\run.txt" -TimeoutSec 560
