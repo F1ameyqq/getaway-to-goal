@@ -113,7 +113,11 @@ $env:RESTORE_TIMING="1"
 .\run_ego.ps1 -Js .\check_env.mjs -Out "$env:TEMP\check.txt" -TimeoutSec 240
 ```
 
-会多打一行 `RESTORE_TIMING {"nav":…,"reload":…,"book_open":…,…}`（单位 ms），`pageRun` 的每题行也会带 `restore=…ms`。不设这个环境变量时输出维持原样。
+会多打一行 `RESTORE_TIMING {"nav":…,"reload":…,"book_open":…,…}`（单位 ms），`pageRun` 的每题行会带 `restore=…ms`，再跟一行 `stages {"ready":…,"boxes":…,"type":…,"ocr":…,"commit":…,"tail":…}`。不设这个环境变量时输出维持原样。
+
+> ego 的 node 代码跑在常驻 task space 里，**继承不到调用方 shell 的环境变量**。
+> `run_ego.ps1` 会把 `RESTORE_TIMING` / `CHECK_QPAGE` / `CHECK_APAGE` 写进 `_run.mjs` 的 prelude，
+> 所以按上面的写法设置是生效的；直接 `ego-browser nodejs -e` 跑则不生效。
 
 ### 平台常量都来自 config.json
 
@@ -224,3 +228,11 @@ python -I prepare_page.py specs\pNN_qspec.json specs\pNN_aspec.json <qPage> <aPa
 14. **一题可以有多个框**：跨栏题（左栏末 + 右栏首）提交后平台记 **2 条 question**。回读校验必须按实际框数比，别假设「题干有就 1」（`pageRun.mjs` 曾因此误报，已修）。
 15. **回读接口不返回 OCR 文本**（`get_manual_annotations_unified` 的 `ocr_result` 是空的）。框内内容对不对，靠 `run()` 里的 OCR 归属校验（`lib.mjs:183`）保证——归属错了会中止不提交，不会静默写错。
 16. **首次提交实测（2026-10-27）**：p33 五题落库 order 90–94，结构全部正确，单题约 54–68 秒。
+17. **restore 提速（2026-10-28）**：reload 改走 `location.reload` + 新文档信号，翻页改用画布像素哈希。`check_env` 实测 restore 从 24s（稳定态）降到 **7.8–8.2s**；单题总耗时尚未重新做端到端实测。
+18. **标注模式门禁（2026-10-28 才查明）**：平台只在**选中最子级目录（课时）**之后才允许画框。否则点 `题目(Q)` 只弹「请先选择左侧的目录！」就返回，画布照样收到 mousedown/mousemove，但**一个框都不登记**（counts 恒为 0）。这是「画了没反应」的真正原因，不是坐标或时序问题。
+19. **目录树点击的箭头陷阱**：点 `.el-tree-node__content` 的 `x+40` 常常正落在展开箭头 `<i class="el-tree-node__expand">` 上，箭头自带 `click.stop`，节点根本不会被选中。必须点标签文字本体（`x + min(w/2, 30)`）。
+20. **插题落点 = 选中课时目录的末尾，与 `cur`、与 OCR 的 `question_order` 都无关。** 2026-10-28 事故：restore 取「DOM 顺序第一个课时」（第1课时），而 cur=95，结果那一题被插到第1课时末尾 order 23，树 215→216、第1课时 22→23，后续题号全部 +1，已删除复原。现在 `restorefn.mjs` 改为按「某课时末尾题号 = cur-1」挑目录，**对不上就抛错中止，绝不猜**；点完还会再读一次末尾题号自证。
+21. **提交后的两个事实（2026-10-28 受控实测）**：①画框**不会**自动清空（本地 counts 仍是提交前的值，直到 reload）；②`cur` 指针**会**推进（95→96）。所以「每页只 restore 一次、连续录」这条省时路线还差一步：必须先找到一个「清空框」的动作，否则会把上一题的框一起提交。
+22. **拖框 `steps`**：`steps:16` 在本页约 15s/帧（大量 mousemove 被丢弃），`steps:2` 正常。鼠标单操作约 0.6–0.9s，别指望靠加等待提速。
+23. **目录编辑 / 删除题目（2026-10-28 查明）**：左侧「目录编辑」→ 题目节点上的「删除题目」→ 确认框 →「应用变更」。删除按钮常被浮动的 `.collapse-btn` 盖住，鼠标点会静默 miss（`elementFromPoint` 不是按钮），要改用 DOM `el.click()`。删除后**后续题号自动重排，已有标注的 `order_in_level` 也会一起回退**（实测删 3 条框 + 一个节点后，树 216→215、标注 284→281、max order 95→94，完全复原）。
+24. **reload 后的假就绪**：刚 reload 时两个页码输入框是空的，此时「输入框存在」≠「目录数据已拉」，翻页不生效（画布停在第一页）。就绪判据必须带「页码非空」。

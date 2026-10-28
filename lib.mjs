@@ -50,7 +50,10 @@ export async function run(conf) {
     await page.waitForTimeout(200);
     await page.mouse.down();
     await page.waitForTimeout(200);
-    await page.mouse.move(g.ox + box.x2, g.oy + box.y2, { steps: 16 });
+    // 2026-10-28 实测：steps 越大越慢，而且是断崖式的 —— steps:16 单次 move 要 15s
+    // （每一步约 0.9s，页面重绘跟不上），平台会把这串迟到的 move 丢掉，框根本不登记。
+    // steps:2（一次中间 move）够用，实测能正常出框。
+    await page.mouse.move(g.ox + box.x2, g.oy + box.y2, { steps: 2 });
     await page.waitForTimeout(250);
     await page.mouse.up();
     await page.waitForTimeout(800);
@@ -98,6 +101,7 @@ export async function run(conf) {
   const gq = s.cs[0], ga = s.cs[1];
   const mq = mapper(gq, SRC_Q[0], SRC_Q[1]);
   const ma = mapper(ga, SRC_A[0], SRC_A[1]);
+  mark("ready");
 
   await page.evaluate(() => {
     window.__cap2 = { ocr: null, commit: null };

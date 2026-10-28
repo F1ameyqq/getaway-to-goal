@@ -144,10 +144,10 @@ Copy-Item config.example.json config.json
 
 ## 第 6 步：环境自检
 
-页码用客户那本书的真实页，默认 33/175 只是示例：
+页码用客户那本书的真实页（问客户要，别按默认值猜）：
 
 ```powershell
-$env:CHECK_QPAGE="1"; $env:CHECK_APAGE="1"
+$env:CHECK_QPAGE="33"; $env:CHECK_APAGE="175"   # 换成客户书的题目页/答案页
 .\run_ego.ps1 -Js .\check_env.mjs -Out "$env:TEMP\check.txt" -TimeoutSec 240
 ```
 

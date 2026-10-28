@@ -11,7 +11,23 @@ if (-not (Test-Path $cfgPath)) { throw "缺少 config.json：先复制 config.ex
 $cfg = Get-Content $cfgPath -Raw -Encoding UTF8 | ConvertFrom-Json
 
 $dst = Join-Path $dir '_run.mjs'
-Copy-Item -LiteralPath $Js -Destination $dst -Force
+# ego-browser 的 node 代码跑在常驻的 task space 里，继承不到调用方 shell 的环境变量
+# （2026-10-28 实测：$env:CHECK_QPAGE 在脚本里是 undefined，写进 ego.cmd 也没用）。
+# 所以把开关直接写进 _run.mjs 的 prelude；import 会被提升，prelude 仍是第一条语句。
+$prelude = ''
+foreach ($k in @('RESTORE_TIMING', 'CHECK_QPAGE', 'CHECK_APAGE')) {
+  $v = [Environment]::GetEnvironmentVariable($k)
+  if ($v) {
+    $esc = $v -replace "'", "''"
+    $prelude += "process.env.$k = '$esc';`n"
+  }
+}
+if ($prelude) {
+  $src = Get-Content -LiteralPath $Js -Raw -Encoding UTF8
+  [System.IO.File]::WriteAllText($dst, $prelude + $src, (New-Object System.Text.UTF8Encoding($false)))
+} else {
+  Copy-Item -LiteralPath $Js -Destination $dst -Force
+}
 if (-not (Test-Path $dst)) { throw "copy failed: $Js -> $dst" }
 if (Test-Path $Out) { Remove-Item $Out -Force }
 
@@ -31,15 +47,11 @@ if (-not $ego -or -not (Test-Path $ego)) {
 $cmdPath = Join-Path $dir 'ego.cmd'
 $imp = 'file:///' + ($dir -replace '\\', '/') + '/_run.mjs'
 $q = "'"
-$lines = @(
-  '@echo off',
-  'setlocal',
-  'set OUT=%~1',
-  ('cd /d "' + $dir + '"'),
-  ('"' + $ego + '" nodejs -e "await import(' + $q + $imp + $q + ')" > "%OUT%" 2>&1'),
-  '>>"%OUT%" echo EXIT=%ERRORLEVEL%',
-  'endlocal'
-)
+$lines = @('@echo off', 'setlocal', 'set OUT=%~1')
+$lines += ('cd /d "' + $dir + '"')
+$lines += ('"' + $ego + '" nodejs -e "await import(' + $q + $imp + $q + ')" > "%OUT%" 2>&1')
+$lines += '>>"%OUT%" echo EXIT=%ERRORLEVEL%'
+$lines += 'endlocal'
 Set-Content -LiteralPath $cmdPath -Value $lines -Encoding Default
 
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)

@@ -81,8 +81,19 @@ export async function main(coordFile, opts = {}) {
         q: it.q, w: it.w, a: it.a, type: it.type, quiet: true,
       });
       const ms = Date.now() - ts;
-      done.push({ n: it.n, order: out.order, ms, restoreMs });
+      // out.T 是 lib.mjs 里的累计时间点（相对 run() 开始）。
+      // 拆成各阶段耗时，restore 之外的 11–24s 到底花在哪，一眼能看出来。
+      const stages = {};
+      let prev = 0;
+      for (const [k, v] of out.T || []) {
+        stages[k] = v - prev;
+        prev = v;
+      }
+      const runMs = ms - restoreMs;
+      if (runMs > prev) stages.tail = runMs - prev;
+      done.push({ n: it.n, order: out.order, ms, restoreMs, stages });
       console.log(`n=${it.n}\torder=${out.order}\tOK\t${ms}ms\trestore=${restoreMs}ms`);
+      if (process.env.RESTORE_TIMING) console.log("  stages " + JSON.stringify(stages));
     } catch (e) {
       const ms = Date.now() - ts;
       failed.push({ n: it.n, err: e.message, ms });
