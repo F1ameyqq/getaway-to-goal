@@ -7,6 +7,8 @@
 //   翻页改用画布像素哈希（变化 + 连续稳定），不再固定等 4s。
 // 条件超时抛的仍然是原来的错误文案（AGENT_PROMPT 的故障对照表按这些文案查）。
 import { P } from "./config.mjs";
+import { norm, requireLessonIndex, assertSelectedLesson } from "./ordercheck.mjs";
+import { parseTree, requireLesson } from "./dirtree.mjs";
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -27,7 +29,9 @@ async function until(fn, timeout, interval = 120) {
   }
 }
 
-export async function restore({ qPage = 28, aPage = 174, verbose = false } = {}) {
+export async function restore({ qPage = 28, aPage = 174, lesson = null, verbose = false } = {}) {
+  // 落点必须由调用方显式指定（pages json 的 lesson 字段）。禁止回落到旧题号算术。
+  if (!lesson) throw new Error("restore: 未指定 lesson（课时名）—— 拒绝按题号推算落点");
   const task = await taskSpace(P.taskSpace);
   const page = task.page(P.page);
   const T0 = Date.now();
@@ -180,39 +184,36 @@ export async function restore({ qPage = 28, aPage = 174, verbose = false } = {})
   // 画布收得到 mousedown/mousemove，但一个框都不会登记（counts 恒为 0）。
   // 坑：点 .el-tree-node__content 的 x+40 往往正好落在展开箭头 <i class="el-tree-node__expand">
   // 上，箭头自带 click.stop，节点根本不会被选中。必须点标签文字本体。
-  // 选目录节点（不是题目节点）不会改「当前题目」指针，cur 保持不变。
   //
-  // 2026-10-28 事故复盘（务必别改回去）：**插题的落点是「选中的最子级目录的末尾」，
-  // 跟 cur、跟 OCR 的 question_order 都无关**。旧实现取 DOM 顺序第一个课时，
-  // 于是 cur=95 的那一题被插进了第1课时末尾（order 23），后续全部题号 +1。
-  // 现在按「该课时最后一个题号 = cur-1」挑目录；一个都对不上就中止，绝不猜。
-  const pick = await page.evaluate(() => {
+  // 2026-10-28 事故复盘（务必别改回去）：插题落点 = 「选中的最子级目录（课时）」，
+  // 跟 cur、跟 OCR 的 question_order 都无关。旧实现按「该课时末尾题号 = cur-1」挑目录，
+  // 一旦前后两页跨课时、或库里有一条畸形记录（如 order 95 两个题目框 0 答案框），就稳定选错，
+  // 且每次都自检通过。现在改为：调用方显式传 lesson，按名字精确选中；点完回读 is-current 节点
+  // 文本必须 === lesson，否则立刻中止。不再用题号算术挑选。
+  const leaf = await page.evaluate(() => {
     const txt = (n) => {
       const c = n.querySelector(":scope > .el-tree-node__content");
       // 用 textContent：课时折叠时 innerText 是空串，textContent 仍有内容。
       return c ? (c.textContent || "").replace(/\s+/g, " ").trim() : "";
     };
-    const num = (n) => {
-      const m = txt(n).match(/^(\d+)/);
-      return m ? m[1] : "";
-    };
-    const dirNodes = () => {
+    const leafDirs = () => {
       const out = [];
       for (const n of document.querySelectorAll(".el-tree-node")) {
         const c = n.querySelector(":scope > .el-tree-node__content");
         if (!c || c.querySelector(".question-node")) continue; // 自身是题目节点
         const kids = [...n.querySelectorAll(":scope > .el-tree-node__children > .el-tree-node")];
-        if (!kids.length) continue;
-        // 子节点全是题目节点 → 这一层就是最子级目录（课时）
-        const allQ = kids.every((k) => {
+        // 子节点里只要还有目录（非题目）节点，这一层就是章/父级，不是课时。
+        const hasDirChild = kids.some((k) => {
           const kc = k.querySelector(":scope > .el-tree-node__content");
-          return kc && kc.querySelector(".question-node");
+          return kc && !kc.querySelector(".question-node");
         });
-        if (allQ) out.push(n);
+        if (hasDirChild) continue;
+        // 剩下的是叶子目录（课时）：要么子节点全是题目节点，要么一个子节点都没有（空课时）。
+        out.push(n);
       }
       return out;
     };
-    window.__leafDirs = dirNodes;
+    window.__leafDirs = leafDirs;
     // 目标课时可能折叠着：先把祖先逐层展开，否则点不到、也读不到坐标。
     window.__expandAncestors = (n) => {
       const anc = [];
@@ -227,22 +228,22 @@ export async function restore({ qPage = 28, aPage = 174, verbose = false } = {})
         if (kids && kids.getBoundingClientRect().height < 5 && caret) caret.click();
       }
     };
-    const dirs = dirNodes().map((n) => {
-      const kids = [...n.querySelectorAll(":scope > .el-tree-node__children > .el-tree-node")];
-      return { label: txt(n), last: num(kids[kids.length - 1]), n: kids.length };
-    });
+    const leaves = window.__leafDirs();
+    const labels = leaves.map((n) => txt(n));
+    // 每个课时下已挂的题目节点数。目标课时必须是 0，否则说明有残留。
+    const qKids = leaves.map((n) =>
+      [...n.querySelectorAll(":scope > .el-tree-node__children > .el-tree-node")].filter((k) => {
+        const kc = k.querySelector(":scope > .el-tree-node__content");
+        return kc && kc.querySelector(".question-node");
+      }).length
+    );
     const t = document.body.innerText.replace(/\s+/g, " ");
     const cur = (t.match(/当前题目[:：]\s*(\d+)/) || [])[1] || null;
-    return { cur, dirs, wantLast: cur ? String(Number(cur) - 1) : null };
+    return { cur, labels, qKids };
   });
-  if (!pick.cur) throw new Error("读不到当前题目，无法确定插题落点");
-  const dirIdx = pick.dirs.findIndex((d) => d.last === pick.wantLast);
-  if (dirIdx < 0)
-    throw new Error(
-      `找不到末尾为第 ${pick.wantLast} 题的课时目录，插题落点不确定（cur=${pick.cur}）——中止。` +
-        `各课时末尾题号: ${pick.dirs.map((d) => `${d.label}=${d.last}`).join(" | ")}`
-    );
-  const dirLabel = pick.dirs[dirIdx].label;
+  if (!leaf.cur) throw new Error("读不到当前题目，无法确定插题落点");
+  const dirIdx = requireLessonIndex(leaf.labels, lesson);
+  const dirLabel = leaf.labels[dirIdx];
   await page.evaluate((i) => {
     const n = window.__leafDirs()[i];
     if (!n) throw new Error("目标课时节点消失");
@@ -271,17 +272,90 @@ export async function restore({ qPage = 28, aPage = 174, verbose = false } = {})
   if (!labelPos) throw new Error("目标课时在滚动后不可见: " + dirLabel);
   await page.mouse.click(labelPos.x, labelPos.y);
   await delay(2200);
-  // 落点自证：点完再读一次该课时末尾题号，必须仍等于 cur-1，否则立刻中止。
-  const confirmLast = await page.evaluate((i) => {
-    const n = window.__leafDirs()[i];
-    if (!n) return null;
-    const kids = [...n.querySelectorAll(":scope > .el-tree-node__children > .el-tree-node")];
-    const c = kids[kids.length - 1].querySelector(":scope > .el-tree-node__content");
-    const m = (c.textContent || "").replace(/\s+/g, " ").trim().match(/^(\d+)/);
-    return m ? m[1] : null;
-  }, dirIdx);
-  if (confirmLast !== pick.wantLast)
-    throw new Error(`插题落点自检失败：选中「${dirLabel}」后末尾题号 ${confirmLast} ≠ ${pick.wantLast}`);
+
+  // 落点自证（回读）：点完读 is-current 节点文本，必须 === 传入 lesson，否则立刻中止。
+  const selLabel = await until(async () => {
+    const s = await page.evaluate(() => {
+      const n = document.querySelector(".el-tree-node.is-current");
+      if (!n) return null;
+      const c = n.querySelector(":scope > .el-tree-node__content");
+      return c ? (c.textContent || "").replace(/\s+/g, " ").trim() : null;
+    });
+    return s || null;
+  }, 3000, 150);
+  if (!selLabel) throw new Error(`课时选中自检失败：点完「${lesson}」后读不到被选中节点`);
+  assertSelectedLesson(selLabel, lesson);
+
+  // 读出被选中课时的 directory_id（服务端标注接口用同一字段标识归属）。
+  // 唯一权威来源是平台自己的目录接口，不从 DOM / Vue 内部结构反推（框架一升级就读不到）。
+  // 读不到就返回 null；录入流程（pageRun）会在提交前因此中止，绝不在没有落点证据时提交。
+  const dirInfo = await (async () => {
+    try {
+      const tok = await page.evaluate(() => JSON.parse(localStorage.getItem("user")).access_token);
+      const r = await page.fetch(`/qieti/api/annotate_ocr/directory/get?file_id=${P.fileId}`, {
+        headers: { authorization: "Bearer " + tok },
+        timeout: 30000,
+      });
+      const nodes = parseTree(r.body);
+      const hit = requireLesson(nodes, lesson);
+      return { id: hit.id, qCount: hit.qCount, via: "api" };
+    } catch (e) {
+      return { id: null, qCount: null, via: "api-failed: " + e.message };
+    }
+  })();
+
+  // 老路径：DOM / Vue 内部结构。接口不可用时兜底，只用来补 id，不作为主证据。
+  const dirInfoDom = dirInfo.id !== null ? null : await page.evaluate(() => {
+    const scalar = (v) => (v !== null && v !== undefined && String(v).trim() !== "") ? String(v).trim() : null;
+    const numeric = (v) => (scalar(v) !== null && !Number.isNaN(Number(v))) ? String(v).trim() : null;
+    const scan = (o) => {
+      if (!o || typeof o !== "object") return null;
+      for (const k of ["directory_id", "directoryId", "dir_id", "dirId", "directory", "dir", "folder_id", "folderId"]) {
+        const v = scalar(o[k]);
+        if (v !== null) return v;
+      }
+      for (const k of Object.keys(o)) {
+        if (/^(id|uid|node_id|nodeId|key)$/i.test(k)) {
+          const v = scalar(o[k]);
+          if (v !== null) return v;
+        }
+      }
+      return null;
+    };
+    const el = document.querySelector(".el-tree-node.is-current");
+    if (!el) return { id: null, dump: "" };
+    for (const e of [el, el.querySelector(":scope > .el-tree-node__content")]) {
+      if (!e) continue;
+      for (const a of e.attributes) {
+        const v = numeric(a.value);
+        if (v !== null && /id|key|dir/i.test(a.name)) return { id: v, dump: "attr " + a.name };
+      }
+    }
+    const cands = [];
+    const vue = el.__vue__;
+    if (vue) {
+      cands.push(vue.node && vue.node.data);
+      cands.push(vue.data);
+      cands.push(vue.node);
+    }
+    const v3 = el.__vueParentComponent;
+    if (v3) {
+      cands.push(v3.props && v3.props.node && v3.props.node.data);
+      cands.push(v3.props && v3.props.data);
+    }
+    for (const o of cands) {
+      const id = scan(o);
+      if (id !== null) {
+        let dump = "";
+        try { dump = JSON.stringify(o).slice(0, 500); } catch (e) { dump = "[unserializable]"; }
+        return { id, dump };
+      }
+    }
+    return { id: null, dump: "" };
+  });
+  const dirResolved = dirInfo.id !== null ? dirInfo : { id: dirInfoDom.id, qCount: null, via: "dom: " + dirInfoDom.dump };
+  if (process.env.RESTORE_TIMING)
+    console.log("RESTORE_DIR " + JSON.stringify({ lesson: dirLabel, dirId: dirResolved.id, via: dirResolved.via.slice(0, 160), qCount: dirResolved.qCount }));
   mark("dir_select");
 
   const pageInputs = await page.evaluate(() =>
@@ -426,5 +500,8 @@ export async function restore({ qPage = 28, aPage = 174, verbose = false } = {})
 
   // 计时只在显式要求时打一行，正常跑不增加输出。
   if (process.env.RESTORE_TIMING) console.log("RESTORE_TIMING " + JSON.stringify(timing));
-  return { ...st, dirLabel, timing };
+  const domQ = leaf.qKids && Number.isFinite(leaf.qKids[dirIdx]) ? leaf.qKids[dirIdx] : null;
+  // 题数以接口为准；接口挂了才用 DOM 数出来的。
+  const dirQ = typeof dirResolved.qCount === "number" ? dirResolved.qCount : domQ;
+  return { ...st, dirLabel, dirId: dirResolved.id, dirQ, lesson: dirLabel, timing };
 }

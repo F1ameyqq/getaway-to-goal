@@ -178,6 +178,17 @@ def make_column(tag, x0, x1, answer=False, table=None):
         y = ypx(r["y0"])
         label = ("A%02d" if answer else tag + "%02d") % i2
         d.text((4, y - 2), label, font=fnt, fill=(200, 0, 0))
+        if table is not None:
+            table.append(
+                "%s y=%.1f-%.1f blocks=%d %s"
+                % (
+                    label,
+                    r["y0"],
+                    r["y1"],
+                    len(r["blocks"]),
+                    " ".join("[%.1f,%.1f]" % (b[0], b[1]) for b in r["blocks"]),
+                )
+            )
         d.line([(LAB - 10, y), (LAB + 12, y)], fill=(0, 150, 0), width=2)
         d.line([(LAB - 4, ypx(r["y1"])), (LAB + 4, ypx(r["y1"]))], fill=(0, 120, 220), width=1)
         if answer:
@@ -188,17 +199,6 @@ def make_column(tag, x0, x1, answer=False, table=None):
                 bb = d.textbbox((lx + 2, ly), txt, font=fnt)
                 d.rectangle(bb, fill=(255, 255, 255))
                 d.text((lx + 2, ly), txt, font=fnt, fill=(0, 110, 220))
-            if table is not None:
-                table.append(
-                    "A%02d y=%.1f-%.1f blocks=%d %s"
-                    % (
-                        i2,
-                        r["y0"],
-                        r["y1"],
-                        len(r["blocks"]),
-                        " ".join("[%.1f,%.1f]" % (b[0], b[1]) for b in r["blocks"]),
-                    )
-                )
     return canvas, len(rows)
 
 
@@ -218,8 +218,9 @@ if KIND == "q":
         raise SystemExit("题目页必须给 --cols，例如 --cols L:44-258,R:262-497")
     imgs = []
     counts = []
+    table = []
     for tag, (x0, x1) in cols.items():
-        c, n = make_column(tag, x0, x1)
+        c, n = make_column(tag, x0, x1, table=table)
         imgs.append(c)
         counts.append("%s=%d" % (tag, n))
     gap = 24
@@ -232,6 +233,8 @@ if KIND == "q":
         x += c.width + gap
     out.save(out_path)
     print("GUIDE q %s %dx%d rows %s" % (out_path, out.width, out.height, " ".join(counts)))
+    for line in table[:160]:
+        print(line)
 
 elif FULL:
     x0, x1 = 0.0, CANVAS["a"][0]

@@ -14,3 +14,22 @@ srcpages/
 *.check.txt
 _*.txt
 _probe*.txt
+
+# 探索期一次性探针和实验脚本（不是流程的一部分）
+__pycache__/
+_exp_*.mjs
+probe_*.mjs
+ego_exp.cmd
+
+# drafts/ 只留脚本和输入样例，测量产物不复用
+drafts/_baseline/
+drafts/exp_parallel_*/
+drafts/*.json
+!drafts/_resume/
+drafts/_resume/*
+!drafts/_resume/*.json
+drafts/*.png
+drafts/*.log
+drafts/_bl
+drafts/_cur
+drafts/_fixed

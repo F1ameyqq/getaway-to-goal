@@ -67,6 +67,12 @@ def main():
     ap.add_argument("outpage")
     ap.add_argument("--outdir", default=SRC_DIR)
     ap.add_argument("--no-overlay", action="store_true")
+    ap.add_argument("--grow", type=float, default=0.0,
+                    help="所有框统一外扩的 CSS 像素数（默认 0）。细分数/上下标被切时用 1.5~2")
+    ap.add_argument("--grow-a", type=float, default=None,
+                    help="答案区单独的外扩量，默认跟 --grow。答案框常用手工 @ 紧排，不该跟着外扩")
+    ap.add_argument("--lesson", default=None,
+                    help="课时名，与左侧目录树显示文本完全一致；写入 pages json 的 lesson 字段，录入时按它精确选课时")
     args = ap.parse_args()
 
     outdir = args.outdir
@@ -82,14 +88,15 @@ def main():
 
     q_base = os.path.splitext(os.path.basename(args.qspec))[0]
     q_out = os.path.join(outdir, q_base + "_out.json")
-    run("measure_page.py", args.qspec, q_out)
+    run("measure_page.py", args.qspec, q_out, args.grow)
     print("MEASURE q %s" % q_out)
 
     a_out = None
     if aspec is not None:
         a_base = os.path.splitext(os.path.basename(args.aspec))[0]
         a_out = os.path.join(outdir, a_base + "_out.json")
-        run("measure_page.py", args.aspec, a_out)
+        grow_a = args.grow if args.grow_a is None else args.grow_a
+        run("measure_page.py", args.aspec, a_out, grow_a)
         print("MEASURE a %s" % a_out)
 
     run(
@@ -103,6 +110,13 @@ def main():
     )
 
     page = json.load(io.open(args.outpage, encoding="utf-8"))
+    if args.lesson:
+        page["lesson"] = args.lesson
+        io.open(args.outpage, "w", encoding="utf-8").write(
+            json.dumps(page, ensure_ascii=False, indent=1))
+        print("LESSON %s" % args.lesson)
+    else:
+        print("LESSON_MISSING (pages json 没有 lesson 字段；录入时 restore 会因缺课时名而中止)")
     items = page.get("items", [])
     boxes = Counter()
     for it in items:

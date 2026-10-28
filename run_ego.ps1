@@ -15,7 +15,7 @@ $dst = Join-Path $dir '_run.mjs'
 # （2026-10-28 实测：$env:CHECK_QPAGE 在脚本里是 undefined，写进 ego.cmd 也没用）。
 # 所以把开关直接写进 _run.mjs 的 prelude；import 会被提升，prelude 仍是第一条语句。
 $prelude = ''
-foreach ($k in @('RESTORE_TIMING', 'CHECK_QPAGE', 'CHECK_APAGE')) {
+foreach ($k in @('RESTORE_TIMING', 'CHECK_QPAGE', 'CHECK_APAGE', 'RUN_PAGE', 'CLEAN_APPLY', 'CLEAN_LO', 'CLEAN_HI')) {
   $v = [Environment]::GetEnvironmentVariable($k)
   if ($v) {
     $esc = $v -replace "'", "''"

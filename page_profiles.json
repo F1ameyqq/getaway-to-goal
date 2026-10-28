@@ -1,0 +1,20 @@
+{
+  "profiles": [
+    {
+      "name": "hi_two_col_math_q",
+      "kind": "q",
+      "verified_pages": ["p34", "p35"],
+      "features": {
+        "height_ratio": [0.99, 1.01],
+        "ink_density": [0.09, 0.30],
+        "expected_columns": 2,
+        "min_rows_per_column": 5,
+        "min_anchors_total": 1,
+        "gutter_margin_css": 8.0,
+        "gutter_ink_max": 0.07,
+        "min_anchor_conf": 0.75
+      },
+      "notes": "Layout-family gate for the two-column math question page. Only p34/p35 are human-verified, but any page matching these measurable facts belongs to the same family and passes the gate (content errors are caught by the invariants). The gutter_ink check is the discriminator: a single-column or table page has ink crossing the band between the two column ranges. min_anchors_total is page-level, not per-column, because a question may span both columns (e.g. p30)."
+    }
+  ]
+}

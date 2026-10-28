@@ -22,6 +22,7 @@ from PIL import Image
 import numpy as np
 
 spec_path, out_path = sys.argv[1], sys.argv[2]
+GROW = float(sys.argv[3]) if len(sys.argv) > 3 else 0.0
 spec = json.load(io.open(spec_path, encoding="utf-8"))
 im = Image.open(spec["src"]).convert("L")
 a = np.array(im)
@@ -135,6 +136,17 @@ def raw_box(sp):
     """'@x0,y0,x1,y1' = 直接给的 CSS 矩形（整块答案用，不必过行分割）。"""
     x0, y0, x1, y1 = map(float, sp[1:].split(","))
     return [x0, y0, x1, y1]
+
+
+def grow(b):
+    """整页统一外扩若干 CSS 像素（命令行第三参数，默认 0）。
+
+    行分割只贴墨迹主体，分数上下标、根号横线、下划线常被切掉半截。
+    框比内容略大无害，切掉内容才是错。"""
+    if not GROW:
+        return b
+    return [max(0.0, b[0] - GROW), max(0.0, b[1] - GROW),
+            min(CANVAS[0], b[2] + GROW), min(CANVAS[1], b[3] + GROW)]
 
 
 def ans_box(sp):
@@ -256,12 +268,12 @@ for it in spec["items"]:
             w_boxes.extend(opt_boxes(sp))
     items.append({
         "n": it["n"],
-        "q": [to_src([b[0], b[1], b[2], b[3]]) for b in q_boxes],
-        "w": [to_src([b[0], b[1], b[2], b[3]]) for b in w_boxes],
-        "q_css": [[round(v, 1) for v in b] for b in q_boxes],
+        "q": [to_src(grow(b)) for b in q_boxes],
+        "w": [to_src(grow(b)) for b in w_boxes],
+        "q_css": [[round(v, 1) for v in grow(b)] for b in q_boxes],
     })
-    ALL_BOXES.extend((it["n"], "q", b) for b in q_boxes)
-    ALL_BOXES.extend((it["n"], "w", b) for b in w_boxes)
+    ALL_BOXES.extend((it["n"], "q", grow(b)) for b in q_boxes)
+    ALL_BOXES.extend((it["n"], "w", grow(b)) for b in w_boxes)
 
 io.open(out_path, "w", encoding="utf-8").write(json.dumps(items, ensure_ascii=False, indent=1))
 print("s_src=%.6f pad=(%.2f,%.2f) items=%d" % (s_src, pad_x, pad_y, len(items)))
